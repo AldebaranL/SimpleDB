@@ -58,8 +58,14 @@ public class TupleDesc implements Serializable {
      *            array specifying the names of the fields. Note that names may
      *            be null.
      */
+    private List<TDItem> tdItemList;
+
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
         // some code goes here
+        tdItemList = new ArrayList<>();
+        for (int i = 0; i < typeAr.length; i++){
+            tdItemList.add(new TDItem(typeAr[i],fieldAr[i]));
+        }
     }
 
     /**
@@ -72,6 +78,10 @@ public class TupleDesc implements Serializable {
      */
     public TupleDesc(Type[] typeAr) {
         // some code goes here
+        tdItemList = new ArrayList<>();
+        for (int i = 0; i < typeAr.length; i++){
+            tdItemList.add(new TDItem(typeAr[i],null));
+        }
     }
 
     /**
@@ -79,7 +89,7 @@ public class TupleDesc implements Serializable {
      */
     public int numFields() {
         // some code goes here
-        return 0;
+        return tdItemList.size();
     }
 
     /**
@@ -93,7 +103,10 @@ public class TupleDesc implements Serializable {
      */
     public String getFieldName(int i) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if(i<0 || i>tdItemList.size()) {
+            throw new NoSuchElementException();
+        }
+        return tdItemList.get(i).fieldName;
     }
 
     /**
