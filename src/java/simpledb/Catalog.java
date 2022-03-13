@@ -5,7 +5,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The Catalog keeps track of all available tables in the database and their
@@ -17,13 +16,26 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Threadsafe
  */
 public class Catalog {
-
+    private static Hashtable<Integer, String> tableIDToName;
+    private static Hashtable<String, Table> tableNameToFile;
+    private class Table{
+        private DbFile file;
+        private String pkeyField;
+        private int tableId;
+        private Table(DbFile file, String pkeyField){
+            this.file = file;
+            this.pkeyField = pkeyField;
+            this.tableId = file.getId();
+        }
+    }
     /**
      * Constructor.
      * Creates a new, empty catalog.
      */
     public Catalog() {
         // some code goes here
+        tableNameToFile = new Hashtable<>();
+        tableIDToName = new Hashtable<>();
     }
 
     /**
@@ -37,6 +49,9 @@ public class Catalog {
      */
     public void addTable(DbFile file, String name, String pkeyField) {
         // some code goes here
+        Table tempTable = new Table(file, pkeyField);
+        tableNameToFile.put(name, tempTable);
+        tableIDToName.put(tempTable.tableId, name);
     }
 
     public void addTable(DbFile file, String name) {
@@ -60,7 +75,10 @@ public class Catalog {
      */
     public int getTableId(String name) throws NoSuchElementException {
         // some code goes here
-        return 0;
+        if(name==null || tableNameToFile.get(name)==null){
+            throw new NoSuchElementException();
+        }
+        return tableNameToFile.get(name).tableId;
     }
 
     /**
@@ -71,7 +89,10 @@ public class Catalog {
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if((tableIDToName.get(tableid) == null)){
+            throw new NoSuchElementException();
+        }
+        return tableNameToFile.get(tableIDToName.get(tableid)).file.getTupleDesc();
     }
 
     /**
@@ -82,27 +103,32 @@ public class Catalog {
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if(tableIDToName.get(tableid) == null){
+            throw new NoSuchElementException();
+        }
+        return tableNameToFile.get(tableIDToName.get(tableid)).file;
     }
 
     public String getPrimaryKey(int tableid) {
         // some code goes here
-        return null;
+        return tableNameToFile.get(tableIDToName.get(tableid)).pkeyField;
     }
 
-    public Iterator<Integer> tableIdIterator() {
+    public Iterator<Integer>  tableIdIterator() {
         // some code goes here
-        return null;
+        return tableIDToName.keySet().iterator();
     }
 
     public String getTableName(int id) {
         // some code goes here
-        return null;
+        return tableIDToName.get(id);
     }
     
     /** Delete all tables from the catalog */
     public void clear() {
         // some code goes here
+        tableIDToName.clear();
+        tableNameToFile.clear();
     }
     
     /**
