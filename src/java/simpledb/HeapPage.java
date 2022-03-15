@@ -67,7 +67,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
+        return (int) Math.floor((BufferPool.getPageSize()*8) / (td.getSize() * 8 + 1));
 
     }
 
@@ -75,13 +75,12 @@ public class HeapPage implements Page {
      * Computes the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      * @return the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      */
-    private int getHeaderSize() {        
-        
+    private int getHeaderSize() {
         // some code goes here
-        return 0;
+        return (int) Math.ceil(this.getNumTuples() / 8);
                  
     }
-    
+
     /** Return a view of this page before it was modified
         -- used by recovery */
     public HeapPage getBeforeImage(){
@@ -112,7 +111,8 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return this.pid;
+   // throw new UnsupportedOperationException("implement this");
     }
 
     /**
@@ -282,7 +282,11 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int numEmptySlots=0;
+        for(int i=0;i<this.tuples.length;i++){
+            if(!isSlotUsed(i)) numEmptySlots++;
+        }
+        return numEmptySlots;
     }
 
     /**
@@ -290,7 +294,8 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        byte temp_head = this.header[(int) Math.ceil(i/8)];
+        return ((temp_head>>(i%8))<<7) != 0;
     }
 
     /**
@@ -307,7 +312,11 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        List<Tuple> temp_tuples = new LinkedList<>();
+        for(int i=0;i<this.tuples.length;i++){
+            if(isSlotUsed(i)) temp_tuples.add(this.tuples[i]);
+        }
+        return temp_tuples.iterator();
     }
 
 }

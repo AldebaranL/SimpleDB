@@ -158,8 +158,8 @@ public class TupleDesc implements Serializable {
     public int getSize() {
         // some code goes here
         int size = 0;
-        if(this.numFields() != 0)
-            size = this.getFieldType(0).getLen() * this.numFields();
+        for(int i = 0; i < this.numFields(); i++)
+            size += this.getFieldType(0).getLen();
         return size;
     }
 
