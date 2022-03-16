@@ -1,7 +1,9 @@
 package simpledb;
 
+import java.awt.*;
 import java.util.*;
 import java.io.*;
+import java.util.List;
 
 /**
  * Each instance of HeapPage stores data for one page of HeapFiles and 
@@ -46,10 +48,12 @@ public class HeapPage implements Page {
 
         // allocate and read the header slots of this page
         header = new byte[getHeaderSize()];
+       // System.out.print(header.length+",");
         for (int i=0; i<header.length; i++)
             header[i] = dis.readByte();
         
         tuples = new Tuple[numSlots];
+       // System.out.println(numSlots);
         try{
             // allocate and read the actual records of this page
             for (int i=0; i<tuples.length; i++)
@@ -58,7 +62,7 @@ public class HeapPage implements Page {
             e.printStackTrace();
         }
         dis.close();
-
+       //System.out.print("7");
         setBeforeImage();
     }
 
@@ -67,7 +71,8 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return (int) Math.floor((BufferPool.getPageSize()*8) / (td.getSize() * 8 + 1));
+        //return (BufferPool.getPageSize()*8)/(td.getSize()*8+1);
+        return (int) Math.floor((Database.getBufferPool().getPageSize()*8) / (td.getSize() * 8 + 1));
 
     }
 
@@ -77,7 +82,11 @@ public class HeapPage implements Page {
      */
     private int getHeaderSize() {
         // some code goes here
-        return (int) Math.ceil(this.getNumTuples() / 8);
+        int headerSize = this.numSlots/8;
+        if(this.numSlots%8 != 0) headerSize += 1;
+        return headerSize;
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //return (int) Math.ceil(this.getNumTuples() / 8);
                  
     }
 
@@ -282,8 +291,8 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        int numEmptySlots=0;
-        for(int i=0;i<this.tuples.length;i++){
+        int numEmptySlots = 0;
+        for(int i = 0; i < this.getNumTuples(); i++){
             if(!isSlotUsed(i)) numEmptySlots++;
         }
         return numEmptySlots;
@@ -294,8 +303,19 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        byte temp_head = this.header[(int) Math.ceil(i/8)];
-        return ((temp_head>>(i%8))<<7) != 0;
+        //System.out.print("9");
+
+        int index = (int) Math.ceil(i/8);
+       /*
+       if(index>=header.length){
+            System.out.println("here!"+index+","+header.length);
+            return false;
+        }
+        else {*/
+            byte tempHead = this.header[index];
+            return ((tempHead>>(i%8))<<7) != 0;
+        //}
+       //System.out.print("0");
     }
 
     /**
@@ -313,9 +333,10 @@ public class HeapPage implements Page {
     public Iterator<Tuple> iterator() {
         // some code goes here
         List<Tuple> temp_tuples = new LinkedList<>();
-        for(int i=0;i<this.tuples.length;i++){
+        for(int i = 0; i < this.tuples.length; i++){
             if(isSlotUsed(i)) temp_tuples.add(this.tuples[i]);
         }
+        //System.out.println(temp_tuples.size()+","+this.tuples.length);
         return temp_tuples.iterator();
     }
 

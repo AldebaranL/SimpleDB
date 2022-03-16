@@ -53,6 +53,7 @@ public class HeapFile implements DbFile {
      */
     public int getId() {
         // some code goes here
+        //System.out.println(this.file.getAbsoluteFile().hashCode());
         return this.file.getAbsoluteFile().hashCode();
         //throw new UnsupportedOperationException("implement this");
     }
@@ -72,17 +73,20 @@ public class HeapFile implements DbFile {
     public Page readPage(PageId pid) {
         // some code goes here
         Page page = null;
-        try(RandomAccessFile file = new RandomAccessFile(this.file,"r")){
-            int pos = pid.getPageNumber() * BufferPool.getPageSize();
-            file.seek(pos);
-            byte[] pageData = new byte[BufferPool.getPageSize()];
-            file.read(pageData,pos,pageData.length);
-            page = new HeapPage((HeapPageId) pid,pageData);
-            file.close();
+        //System.out.println("2");
+        try(RandomAccessFile rafile = new RandomAccessFile(this.file,"r")){
+
+            int pos = pid.getPageNumber() * Database.getBufferPool().getPageSize();
+            byte[] pageData = new byte[Database.getBufferPool().getPageSize()];
+            rafile.seek(pos);
+            rafile.read(pageData,0,pageData.length);//System.out.print("3");
+            page = new HeapPage((HeapPageId) pid,pageData);//System.out.print("4");
         }
         catch(IOException e){
             e.printStackTrace();
         }
+
+        //System.out.println("");
         return page;
     }
 
@@ -97,7 +101,7 @@ public class HeapFile implements DbFile {
      */
     public int numPages() {
         // some code goes here
-        return (int) Math.ceil(this.file.length() / BufferPool.getPageSize());
+        return (int) Math.ceil(this.file.length() / Database.getBufferPool().getPageSize());
     }
 
     // see DbFile.java for javadocs
@@ -120,22 +124,12 @@ public class HeapFile implements DbFile {
     public DbFileIterator iterator(TransactionId tid) {
         // some code goes here
         return new HeapFileIterator(this, tid);
-        /*DbFileIterator iterator;
-        public void open() throws DbException, TransactionAbortedException{
-
-        }
-        PageId pid;
-        for(int pageNo = 0; pageNo < this.numPages(); pageNo++){
-
-            Page page = BufferPool.getPage(tid, new HeapPageId(this.getId(), pageNo), Permissions.READ_WRITE);
-        }
-
-        return null;*/
     }
 
 }
 /**
  * Helper class that implements the Java Iterator for tuples on a HeapFile.
+ * By lyy
  */
 class HeapFileIterator extends AbstractDbFileIterator {
 
@@ -143,7 +137,7 @@ class HeapFileIterator extends AbstractDbFileIterator {
     HeapPage curp = null;
 
     TransactionId tid;
-    HeapFile f;
+    HeapFile heapFile;
 
     /**
      * Constructor for this iterator
@@ -151,7 +145,7 @@ class HeapFileIterator extends AbstractDbFileIterator {
      * @param tid - the transaction id
      */
     public HeapFileIterator(HeapFile f, TransactionId tid) {
-        this.f = f;
+        this.heapFile = f;
         this.tid = tid;
     }
 
@@ -165,18 +159,9 @@ class HeapFileIterator extends AbstractDbFileIterator {
      * --By lyy, 20220316
      */
     public void open() throws DbException, TransactionAbortedException {
-        PageId pid;
-        int pageNo = 0;
-        //for(int pageNo = 0; pageNo < this.f.numPages(); pageNo++){
-
         curp = (HeapPage) Database.getBufferPool().getPage(tid,
-                            new HeapPageId(this.f.getId(), pageNo),
+                            new HeapPageId(this.heapFile.getId(), 0),
                             Permissions.READ_ONLY);
-        //}
-       // BTreeRootPtrPage rootPtr = (BTreeRootPtrPage) Database.getBufferPool().getPage(
-       //         tid, BTreeRootPtrPage.getId(f.getId()), Permissions.READ_ONLY);
-       //BTreePageId root = rootPtr.getRootId();
-        //curp = f.findLeafPage(tid, root, Permissions.READ_ONLY, null);
         it = curp.iterator();
     }
 
@@ -194,12 +179,13 @@ class HeapFileIterator extends AbstractDbFileIterator {
             it = null;
         while (it == null && curp != null) {//以防某些Page无tuple，翻页，读到有为止
             int nextPageNo = curp.getId().getPageNumber() + 1;
-            if(nextPageNo >= this.f.numPages()) {
+            //System.out.println(nextPageNo+","+this.f.numPages());
+            if(nextPageNo >= this.heapFile.numPages()) {
                 curp = null;//finished all pages
             }
             else {
                 curp = (HeapPage) Database.getBufferPool().getPage(tid,
-                        new HeapPageId(this.f.getId(), nextPageNo),
+                        new HeapPageId(this.heapFile.getId(), nextPageNo),
                         Permissions.READ_ONLY);//read next page
                 it = curp.iterator();
                 if (!it.hasNext())

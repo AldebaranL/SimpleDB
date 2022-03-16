@@ -30,20 +30,21 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
     private int numPages;
    // private LinkedList<Page> pages;
-    private ConcurrentHashMap<PageId, Page> pages;
-    private ConcurrentHashMap<PageId, lock> locks;
+    private ConcurrentHashMap<Integer, Page> pages;
+    private ConcurrentHashMap<Integer, lock> locks;
     private class lock {
-        private TransactionId transactionId;
-        private Permissions permissions;
+        private TransactionId transactionId = null;
+        private Permissions permissions = null;
         private lock(TransactionId tid, Permissions perm){
             this.permissions = perm;
             this.transactionId = tid;
         }
         private boolean isLocked(){
-            return true;
+            return transactionId != null;
         }
         private void addlock(TransactionId tid,Permissions perm){
-
+            this.permissions = perm;
+            this.transactionId = tid;
         }
     }
     /**
@@ -91,24 +92,35 @@ public class BufferPool {
 
 
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException {
+            throws TransactionAbortedException, DbException {
         // some code goes here
         Page tempPage;
-        if(pages.contains(pid)){
-            tempPage = pages.get(pid);
-            if(locks.get(pid).isLocked()){
+        if(pages.containsKey(pid.hashCode())){
+            //page已在BufferPool中
+            tempPage = pages.get(pid.hashCode());
+            if(locks.get(pid.hashCode()).isLocked()){
+                //已被锁定，不能访问
                 throw new TransactionAbortedException();
             }
             else{
-                locks.get(pid).addlock(tid, perm);
+                //未被锁定，添加新锁
+                throw new DbException("not implement");
+                //locks.get(pid).addlock(tid, perm);
             }
         }
         else{
+            //page未在BufferPool中
             tempPage = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
             if(pages.size() == numPages){
+                //pages已满，需要丢弃
                 throw new DbException("Not yet implemented implemented an eviction policy");
             }
-            locks.put(pid, new lock(tid,perm));
+            else{
+                //未满
+                pages.put(pid.hashCode(), tempPage);
+                locks.put(pid.hashCode(), new lock(tid,perm));
+            }
+
         }
         return tempPage;
     }

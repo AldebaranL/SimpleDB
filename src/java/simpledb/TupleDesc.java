@@ -159,7 +159,7 @@ public class TupleDesc implements Serializable {
         // some code goes here
         int size = 0;
         for(int i = 0; i < this.numFields(); i++)
-            size += this.getFieldType(0).getLen();
+            size += this.getFieldType(i).getLen();
         return size;
     }
 
