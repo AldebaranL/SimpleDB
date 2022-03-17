@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project name="simpledb" default="dist" basedir=".">
+
+
     <property name="src" location="src"/>
     <property name="testd" location="test"/>
 
@@ -44,7 +46,7 @@
             <mkdir dir="@{destdir}"/>
             <!-- avoids needing ant clean when changing interfaces -->
             <depend srcdir="${src}" destdir="${dist}" cache="${depcache}"/>
-            <javac srcdir="@{srcdir}" destdir="@{destdir}" includeAntRuntime="no"
+            <javac srcdir="@{srcdir}" destdir="@{destdir}" encoding="UTF-8" includeAntRuntime="no"
                     debug="${compile.debug}" source="${sourceversion}">
                 <compilerarg value="-Xlint:unchecked" />
                 <!--<compilerarg value="-Xlint:deprecation" />-->

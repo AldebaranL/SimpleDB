@@ -1,0 +1,5 @@
+//20220317 By lyy
+//测试:./some_data_file.txt中为数据库中的数据，./src/java/simpledb/test.java为测试的程序，现在仅有顺序访问操作。
+ant //编译生成simpledb.jar
+java -jar dist/simpledb.jar convert some_data_file.txt 3//将.txt转换为.dat以便读入，3为列数，数据应符合要求，每行最后必须换行（包括最后一行）
+java -classpath dist/simpledb.jar simpledb.test //运行测试程序

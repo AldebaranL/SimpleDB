@@ -96,27 +96,27 @@ public class BufferPool {
         // some code goes here
         Page tempPage;
         if(pages.containsKey(pid.hashCode())){
-            //page已在BufferPool中
+            //the page is in BufferPool already
             tempPage = pages.get(pid.hashCode());
             if(locks.get(pid.hashCode()).isLocked()){
-                //已被锁定，不能访问
+                //locked,unable to access
                 throw new TransactionAbortedException();
             }
             else{
-                //未被锁定，添加新锁
+                //unlocked,add new lock
                 throw new DbException("not implement");
                 //locks.get(pid).addlock(tid, perm);
             }
         }
         else{
-            //page未在BufferPool中
+            //the page is not in BufferPool
             tempPage = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
             if(pages.size() == numPages){
-                //pages已满，需要丢弃
+                //pages is full, need to be evict.
                 throw new DbException("Not yet implemented implemented an eviction policy");
             }
             else{
-                //未满
+                //page is not full
                 pages.put(pid.hashCode(), tempPage);
                 locks.put(pid.hashCode(), new lock(tid,perm));
             }

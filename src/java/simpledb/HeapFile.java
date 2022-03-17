@@ -173,13 +173,14 @@ class HeapFileIterator extends AbstractDbFileIterator {
      */
     @Override
     protected Tuple readNext() throws TransactionAbortedException, DbException {
-        //1.当前page未读完的情形, 无需处理
-        //2.当前page已读完的情形, 换页
+        //1.the current page has not been finished, nothing need to be done.
+        //2.the current page has been finished, read ext page
         if (it != null && !it.hasNext())
             it = null;
-        while (it == null && curp != null) {//以防某些Page无tuple，翻页，读到有为止
+        //use while to avoid some Page don't have any tuple
+        //read next page until done
+        while (it == null && curp != null) {
             int nextPageNo = curp.getId().getPageNumber() + 1;
-            //System.out.println(nextPageNo+","+this.f.numPages());
             if(nextPageNo >= this.heapFile.numPages()) {
                 curp = null;//finished all pages
             }
