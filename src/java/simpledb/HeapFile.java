@@ -79,14 +79,12 @@ public class HeapFile implements DbFile {
             int pos = pid.getPageNumber() * Database.getBufferPool().getPageSize();
             byte[] pageData = new byte[Database.getBufferPool().getPageSize()];
             rafile.seek(pos);
-            rafile.read(pageData,0,pageData.length);//System.out.print("3");
-            page = new HeapPage((HeapPageId) pid,pageData);//System.out.print("4");
+            rafile.read(pageData,0,pageData.length);
+            page = new HeapPage((HeapPageId) pid,pageData);
         }
         catch(IOException e){
             e.printStackTrace();
         }
-
-        //System.out.println("");
         return page;
     }
 

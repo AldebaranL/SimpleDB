@@ -303,19 +303,9 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        //System.out.print("9");
-
         int index = (int) Math.ceil(i/8);
-       /*
-       if(index>=header.length){
-            System.out.println("here!"+index+","+header.length);
-            return false;
-        }
-        else {*/
-            byte tempHead = this.header[index];
-            return ((tempHead>>(i%8))<<7) != 0;
-        //}
-       //System.out.print("0");
+        byte tempHead = this.header[index];
+        return ((tempHead>>(i%8))<<7) != 0;
     }
 
     /**
