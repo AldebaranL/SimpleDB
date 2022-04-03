@@ -8,7 +8,7 @@ import java.util.*;
  */
 public class TupleDesc implements Serializable {
 
-    private List<TDItem> tdItems;
+    private final List<TDItem> tdItems;
     /**
      * A help class to facilitate organizing the information of each field
      * */
@@ -122,6 +122,8 @@ public class TupleDesc implements Serializable {
     public Type getFieldType(int i) throws NoSuchElementException {
         // some code goes here
         if(i<0 || i>=tdItems.size()) {
+            //System.out.println(i);
+            //System.out.println(tdItems);
             throw new NoSuchElementException();
         }
         return tdItems.get(i).fieldType;
@@ -175,16 +177,17 @@ public class TupleDesc implements Serializable {
      */
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
         // some code goes here
-        int size1 = td1.tdItems.size();
-        Type[] tempType = new Type[size1 + td2.tdItems.size()];
-        String[] tempField = new String[size1 + td2.tdItems.size()];
-        for(int i = 0; i < td1.tdItems.size(); i++){
-            tempType[i] = td1.tdItems.get(i).fieldType;
-            tempField[i] = td1.tdItems.get(i).fieldName;
+        int size1 = td1.numFields();
+        Type[] tempType = new Type[size1 + td2.numFields()];
+        String[] tempField = new String[size1 + td2.numFields()];
+        for(int i = 0; i < size1; i++){
+
+            tempType[i] = td1.getFieldType(i);
+            tempField[i] = td1.getFieldName(i);
         }
-        for(int i = 0; i < td2.tdItems.size(); i++){
-            tempType[size1 + i] = td2.tdItems.get(i).fieldType;
-            tempField[size1 + i] = td2.tdItems.get(i).fieldName;
+        for(int i = 0; i < td2.numFields(); i++){
+            tempType[size1 + i] = td2.getFieldType(i);
+            tempField[size1 + i] = td2.getFieldName(i);
         }
         return new TupleDesc(tempType, tempField);
     }

@@ -76,8 +76,9 @@ public class HeapFile implements DbFile {
         //System.out.println("2");
         try(RandomAccessFile rafile = new RandomAccessFile(this.file,"r")){
 
-            int pos = pid.getPageNumber() * Database.getBufferPool().getPageSize();
-            byte[] pageData = new byte[Database.getBufferPool().getPageSize()];
+            int pos = pid.getPageNumber() * BufferPool.getPageSize();
+            //Database.getBufferPool();
+            byte[] pageData = new byte[BufferPool.getPageSize()];
             rafile.seek(pos);
             rafile.read(pageData,0,pageData.length);
             page = new HeapPage((HeapPageId) pid,pageData);
@@ -99,7 +100,7 @@ public class HeapFile implements DbFile {
      */
     public int numPages() {
         // some code goes here
-        return (int) Math.ceil(this.file.length() / Database.getBufferPool().getPageSize());
+        return (int) Math.ceil(this.file.length() / BufferPool.getPageSize());
     }
 
     // see DbFile.java for javadocs

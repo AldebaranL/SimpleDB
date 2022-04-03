@@ -19,8 +19,8 @@ public class RecordId implements Serializable {
      * @param tupleno
      *            the tuple number within the page.
      */
-    private PageId pageId;
-    private int tupleNo;
+    private final PageId pageId;
+    private final int tupleNo;
     public RecordId(PageId pid, int tupleno) {
         // some code goes here
         this.pageId = pid;
@@ -54,8 +54,7 @@ public class RecordId implements Serializable {
         // some code goes here
         if(! (o instanceof RecordId)) return false;
         if(!((RecordId) o).pageId.equals(this.pageId)) return false;
-        if(((RecordId) o).tupleNo != this.tupleNo) return false;
-        return true;
+        return ((RecordId) o).tupleNo == this.tupleNo;
         //throw new UnsupportedOperationException("implement this");
     }
 

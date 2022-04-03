@@ -7,6 +7,9 @@ import java.io.Serializable;
  * is most likely used by the Join operator.
  */
 public class JoinPredicate implements Serializable {
+    private final Predicate.Op op;
+    private final int field1No;
+    private final int field2No;
 
     private static final long serialVersionUID = 1L;
 
@@ -26,6 +29,9 @@ public class JoinPredicate implements Serializable {
      */
     public JoinPredicate(int field1, Predicate.Op op, int field2) {
         // some code goes here
+        this.field1No=field1;
+        this.field2No=field2;
+        this.op=op;
     }
 
     /**
@@ -36,24 +42,24 @@ public class JoinPredicate implements Serializable {
      */
     public boolean filter(Tuple t1, Tuple t2) {
         // some code goes here
-        return false;
+        return t1.getField(this.field1No).compare(this.op,t2.getField(this.field2No));
     }
     
     public int getField1()
     {
         // some code goes here
-        return -1;
+        return this.field1No;
     }
     
     public int getField2()
     {
         // some code goes here
-        return -1;
+        return this.field2No;
     }
     
     public Predicate.Op getOperator()
     {
         // some code goes here
-        return null;
+        return this.op;
     }
 }

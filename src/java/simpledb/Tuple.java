@@ -12,10 +12,9 @@ import java.util.List;
  * with the data for each field.
  */
 public class Tuple implements Serializable {
-
     private RecordId recordId;
     private TupleDesc tupleDesc;
-    private List<Field> fields;
+    private final List<Field> fields;
     private static final long serialVersionUID = 1L;
 
     /**

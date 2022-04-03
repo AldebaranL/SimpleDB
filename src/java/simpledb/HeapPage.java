@@ -17,12 +17,12 @@ public class HeapPage implements Page {
 
     final HeapPageId pid;
     final TupleDesc td;
-    final byte header[];
-    final Tuple tuples[];
+    final byte[] header;
+    final Tuple[] tuples;
     final int numSlots;
 
     byte[] oldData;
-    private final Byte oldDataLock=new Byte((byte)0);
+    private final Byte oldDataLock= (byte) 0;
 
     /**
      * Create a HeapPage from a set of bytes of data read from disk.
@@ -72,7 +72,8 @@ public class HeapPage implements Page {
     private int getNumTuples() {        
         // some code goes here
         //return (BufferPool.getPageSize()*8)/(td.getSize()*8+1);
-        return (int) Math.floor((Database.getBufferPool().getPageSize()*8) / (td.getSize() * 8 + 1));
+        //Database.getBufferPool();
+        return (int) Math.floor((BufferPool.getPageSize()*8) / (td.getSize() * 8 + 1));
 
     }
 
@@ -175,9 +176,9 @@ public class HeapPage implements Page {
         DataOutputStream dos = new DataOutputStream(baos);
 
         // create the header of the page
-        for (int i=0; i<header.length; i++) {
+        for (byte b : header) {
             try {
-                dos.writeByte(header[i]);
+                dos.writeByte(b);
             } catch (IOException e) {
                 // this really shouldn't happen
                 e.printStackTrace();
