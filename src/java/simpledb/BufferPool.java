@@ -2,6 +2,7 @@ package simpledb;
 
 import java.io.*;
 
+import java.util.ArrayList;
 import java.util.Dictionary;
 import java.util.LinkedList;
 import java.util.List;
@@ -35,12 +36,15 @@ public class BufferPool {
     private class lock {
         private TransactionId transactionId = null;
         private Permissions permissions = null;
-        private lock(TransactionId tid, Permissions perm){
+        private int pageNo;
+        private lock(TransactionId tid, Permissions perm,int pageNo){
             this.permissions = perm;
             this.transactionId = tid;
+            this.pageNo=pageNo;
         }
         private boolean isLocked(){
-            return transactionId != null;
+            return pages.get(pageNo).isDirty()==null;
+            //return transactionId != null;
         }
         private void addlock(TransactionId tid,Permissions perm){
             this.permissions = perm;
@@ -100,11 +104,11 @@ public class BufferPool {
             tempPage = pages.get(pid.hashCode());
             if(locks.get(pid.hashCode()).isLocked()){
                 //locked,unable to access
-                throw new TransactionAbortedException();
+                //throw new TransactionAbortedException();
             }
             else{
                 //unlocked,add new lock
-                throw new DbException("not implement");
+                //throw new DbException("not implement");
                 //locks.get(pid).addlock(tid, perm);
             }
         }
@@ -118,7 +122,7 @@ public class BufferPool {
             else{
                 //page is not full
                 pages.put(pid.hashCode(), tempPage);
-                locks.put(pid.hashCode(), new lock(tid,perm));
+                locks.put(pid.hashCode(), new lock(tid,perm,pid.hashCode()));
             }
 
         }
@@ -188,6 +192,17 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        DbFile now_dbfile=Database.getCatalog().getDatabaseFile(tableId);
+        ArrayList<Page> temp_arraylist=now_dbfile.insertTuple(tid,t);
+        for (Page now_page:temp_arraylist) {
+            //System.out.println(now_page.getId()+"insert1");
+            now_page.markDirty(true,tid);
+            if(pages.containsKey(now_page.getId().hashCode()))
+                pages.replace(now_page.getId().hashCode(),now_page);
+            else{
+                this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
+            }
+        }
     }
 
     /**
@@ -207,6 +222,17 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        DbFile now_dbfile=Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
+        ArrayList<Page> temp_arraylist=now_dbfile.deleteTuple(tid,t);
+        for(Page now_page:temp_arraylist){
+            //System.out.println(now_page.getId()+"delete1");
+            now_page.markDirty(true,tid);
+            if(pages.containsKey(now_page.getId().hashCode()))
+                pages.replace(now_page.getId().hashCode(),now_page);
+            else{
+                this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
+            }
+        }
     }
 
     /**
@@ -217,7 +243,9 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-
+        for(Page now_page:pages.values()){
+            flushPage(now_page.getId());
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -231,6 +259,7 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+        pages.remove(pid.hashCode());
     }
 
     /**
@@ -240,6 +269,11 @@ public class BufferPool {
     private synchronized  void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
+        Page now_page=pages.get(pid.hashCode());
+        if(now_page.isDirty()!=null){
+            Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(now_page);
+            now_page.markDirty(false,null);
+        }
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -253,9 +287,10 @@ public class BufferPool {
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
+    private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+
     }
 
 }
