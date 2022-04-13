@@ -285,6 +285,7 @@ public class HeapPage implements Page {
                 return;
             }
         }
+        throw new DbException("the page is full");
     }
 
     /**
@@ -326,7 +327,7 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        int div_res=i/8,div_rem=i%8;
+        int div_res=(int)Math.floor(i/8),div_rem=i%8;
         int temp=header[div_res];
         temp>>=div_rem;
         temp&=1;
@@ -339,7 +340,7 @@ public class HeapPage implements Page {
     private void markSlotUsed(int i, boolean value) {
         // some code goes here
         // not necessary for lab1
-        int div_res=i/8,div_rem=i%8;
+        int div_res=(int)Math.floor(i/8),div_rem=i%8;
         byte temp=header[div_res];
         if(value){
             header[div_res]= (byte)(temp|(1<<div_rem));

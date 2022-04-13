@@ -119,12 +119,13 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
     @Test public void handleManyDirtyPages() throws Exception {
     	HeapFileDuplicates hfd = new HeapFileDuplicates(empty.getFile(), empty.getTupleDesc(), 10);
     	Database.getCatalog().addTable(hfd, SystemTestUtil.getUUID());
+		DbFileIterator it1 = hfd.iterator(tid);
     	Database.getBufferPool().insertTuple(tid, hfd.getId(), Utility.getHeapTuple(1, 2));
-    	
+
     	// there should now be 10 tuples (on 10 different pages) in the buffer pool
     	DbFileIterator it = hfd.iterator(tid);
     	it.open();
-    	
+		//System.out.println(it.hasNext());
     	int count = 0;
     	while(it.hasNext()) {
     		it.next();

@@ -43,8 +43,8 @@ public class BufferPool {
             this.pageNo=pageNo;
         }
         private boolean isLocked(){
-            return pages.get(pageNo).isDirty()==null;
-            //return transactionId != null;
+            //return pages.get(pageNo).isDirty()==null;
+            return transactionId != null;
         }
         private void addlock(TransactionId tid,Permissions perm){
             this.permissions = perm;
@@ -94,7 +94,6 @@ public class BufferPool {
      * @param perm the requested permissions on the page
      */
 
-
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
         // some code goes here
@@ -117,6 +116,7 @@ public class BufferPool {
             tempPage = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
             if(pages.size() == numPages){
                 //pages is full, need to be evict.
+                //this.evictPage();
                 throw new DbException("Not yet implemented implemented an eviction policy");
             }
             else{
@@ -200,7 +200,9 @@ public class BufferPool {
             if(pages.containsKey(now_page.getId().hashCode()))
                 pages.replace(now_page.getId().hashCode(),now_page);
             else{
-                this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
+                //this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
+                pages.put(now_page.getId().hashCode(),now_page);
+                locks.put(now_page.getId().hashCode(), new lock(tid,Permissions.READ_WRITE,now_page.getId().hashCode()));
             }
         }
     }
@@ -230,7 +232,10 @@ public class BufferPool {
             if(pages.containsKey(now_page.getId().hashCode()))
                 pages.replace(now_page.getId().hashCode(),now_page);
             else{
-                this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
+                //this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
+                // 不能从磁盘中读取，因为磁盘中的page仍为更新前的，要直接在cache中添加此page并标记为dirty，以便未来在磁盘上再更新。
+                pages.put(now_page.getId().hashCode(),now_page);
+                locks.put(now_page.getId().hashCode(), new lock(tid,Permissions.READ_WRITE,now_page.getId().hashCode()));
             }
         }
     }
@@ -266,7 +271,7 @@ public class BufferPool {
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
+    private synchronized void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
         Page now_page=pages.get(pid.hashCode());
@@ -290,7 +295,19 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-
+        Page to_test_page=null;
+        Integer to_remove_hashcode=null;
+        for(Integer it:pages.keySet()) {
+            to_test_page = pages.get(it);
+            if (to_test_page.isDirty() != null) {//HeapPage的isDirty()如果是dirty会返回TransactionId
+                to_test_page=null;
+                continue;
+            }
+            to_remove_hashcode=it;
+            break;
+        }
+        if(to_test_page==null) throw new DbException("there are all dirty page");
+        pages.remove(to_remove_hashcode);
     }
 
 }

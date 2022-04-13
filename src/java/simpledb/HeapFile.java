@@ -135,17 +135,20 @@ public class HeapFile implements DbFile {
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         //return null;
+        //System.out.println("Heapfile.insert");
         ArrayList<Page> modifiedPages = new ArrayList<>();
         for(int i=0;i<numPages();i++){
             HeapPage nowPage=(HeapPage)Database.getBufferPool().getPage(tid,new HeapPageId(getId(),i),Permissions.READ_WRITE);
             if(nowPage.getNumEmptySlots()!=0) {
                 nowPage.insertTuple(t);//t的RecordId由该函数内部更新
                 modifiedPages.add(nowPage);
+                //System.out.println("exist free page");
                 return modifiedPages;
             }
         }
+        //System.out.println("no pages is free");
         //if no pages are free,add page first
-        HeapPage nowPage = (HeapPage) Database.getBufferPool().getPage(tid, new HeapPageId(getId(),numPages()),Permissions.READ_WRITE);
+        HeapPage nowPage = ((HeapPage) Database.getBufferPool().getPage(tid, new HeapPageId(getId(),numPages()),Permissions.READ_WRITE));
         nowPage.insertTuple(t);
         modifiedPages.add(nowPage);
         this.writePage(nowPage);
@@ -232,13 +235,14 @@ class HeapFileIterator extends AbstractDbFileIterator {
     @Override
     protected Tuple readNext() throws TransactionAbortedException, DbException {
         //1.the current page has not been finished, nothing need to be done.
-        //2.the current page has been finished, read ext page
+        //2.the current page has been finished, read next page
         if (it != null && !it.hasNext())
             it = null;
         //use while to avoid some Page don't have any tuple
         //read next page until done
         while (it == null && curp != null) {
             int nextPageNo = curp.getId().getPageNumber() + 1;
+            //System.out.printf("%d,%d\n",nextPageNo,this.heapFile.numPages());
             if(nextPageNo >= this.heapFile.numPages()) {
                 curp = null;//finished all pages
             }
