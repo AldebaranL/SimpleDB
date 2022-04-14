@@ -1,5 +1,7 @@
 package simpledb;
 
+import java.io.IOException;
+
 /**
  * Inserts tuples read from the child operator into the tableId specified in the
  * constructor
@@ -8,6 +10,12 @@ public class Insert extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    private TransactionId tid;
+    private OpIterator child;
+    private int tableId;
+    private TupleDesc td;
+
+    private boolean isCalled;//插入操作的每个child仅被执行一次插入即可，故仅需使用bool记录当前是否执行过全部child的插入。
     /**
      * Constructor.
      *
@@ -24,23 +32,38 @@ public class Insert extends Operator {
     public Insert(TransactionId t, OpIterator child, int tableId)
             throws DbException {
         // some code goes here
+        if(!child.getTupleDesc().equals(Database.getCatalog().getTupleDesc(tableId)))
+            throw new DbException("TupleDesc doesn't match");
+        this.tid=t;
+        this.child=child;
+        this.tableId=tableId;
+        this.td=new TupleDesc(new Type[]{Type.INT_TYPE},new String[]{null});
+        this.isCalled=false;
     }
 
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return this.td;
     }
 
     public void open() throws DbException, TransactionAbortedException {
         // some code goes here
+        child.open();
+        super.open();
+        isCalled=false;
     }
 
     public void close() {
         // some code goes here
+        child.close();
+        super.close();
+        isCalled=true;
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        child.rewind();
+        isCalled=false;
     }
 
     /**
@@ -58,17 +81,31 @@ public class Insert extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        if(isCalled) return null;
+        int numIns = 0;
+        while(child.hasNext()){
+            try {
+                Database.getBufferPool().insertTuple(tid, tableId, child.next());
+                numIns++;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        isCalled=true;
+        Tuple numInserted=new Tuple(new TupleDesc(new Type[]{Type.INT_TYPE}));
+        numInserted.setField(0,new IntField(numIns));
+        return numInserted;
     }
 
     @Override
     public OpIterator[] getChildren() {
         // some code goes here
-        return null;
+        return new OpIterator[]{this.child};
     }
 
     @Override
     public void setChildren(OpIterator[] children) {
         // some code goes here
+        this.child=children[0];
     }
 }
