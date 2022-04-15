@@ -417,12 +417,14 @@ public class LogicalPlan {
             if (si.aggOp != null) {
                 outFields.add(groupByField!=null?1:0);
                 TupleDesc td = node.getTupleDesc();
+
 //                int  id;
                 try {
 //                    id = 
                     td.fieldNameToIndex(si.fname);
                 } catch (NoSuchElementException e) {
-                    throw new ParsingException("Unknown field " +  si.fname + " in SELECT list");
+
+                    throw new ParsingException("Unknown field " +  si.fname + " in SELECT list@");
                 }
                 outTypes.add(Type.INT_TYPE);  //the type of all aggregate functions is INT
 
@@ -447,11 +449,14 @@ public class LogicalPlan {
                     }
             } else  {
                     TupleDesc td = node.getTupleDesc();
+                //System.out.println("!!");
+                //for(int ii=0;ii<td.numFields();ii++)
+                //    System.out.println(td.getFieldName(ii));//lyy
                     int id;
                     try {
                         id = td.fieldNameToIndex(si.fname);
                     } catch (NoSuchElementException e) {
-                        throw new ParsingException("Unknown field " +  si.fname + " in SELECT list");
+                        throw new ParsingException("Unknown field " +  si.fname + " in SELECT list!");
                     }
                     outFields.add(id);
                     outTypes.add(td.getFieldType(id));

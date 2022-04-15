@@ -146,7 +146,7 @@ public class TupleDesc implements Serializable {
                     return i;
                 }
             }
-            else if(name.equals(tdItems.get(i).fieldName)){
+            else if(name.equals(tdItems.get(i).fieldName)){//lyy
                 return i;
             }
         }
