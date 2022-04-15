@@ -1,5 +1,22 @@
-//20220317 By lyy
-//测试:./some_data_file.txt中为数据库中的数据，./src/java/simpledb/test.java为测试的程序，现在仅有顺序访问操作。
+//20220317 By lyy finished Lab1
+//测试:./some_data_file.txt中为数据库中的数据，./src/java/simpledb/test.java为测试的程序。现在仅有顺序访问操作。
 ant //编译生成simpledb.jar
 java -jar dist/simpledb.jar convert some_data_file.txt 3//将.txt转换为.dat以便读入，3为列数，数据应符合要求，每行最后必须换行（包括最后一行）
 java -classpath dist/simpledb.jar simpledb.test //运行测试程序
+
+//20220414 By lyy finished Lab2
+/*测试:./data.txt中为数据库中的数据，./catalog.txt中为数据库的数据格式，表示仅有一个table与其属性。现支持顺序访问、插入、删除、聚合操作。
+ *一些使用注意事项：
+    You must preface every field name with its table name, even if the field name is unique (you can use table name aliases, as in the example above, but you cannot use the AS keyword.)
+    Nested queries are supported in the WHERE clause, but not the FROM clause.
+    No arithmetic expressions are supported (for example, you can't take the sum of two fields.)
+    At most one GROUP BY and one aggregate column are allowed.
+    Set-oriented operators like IN, UNION, and EXCEPT are not allowed.
+    Only AND expressions in the WHERE clause are allowed.
+    UPDATE expressions are not supported.
+    The string operator LIKE is allowed, but must be written out fully (that is, the Postgres tilde [~] shorthand is not allowed.)
+ */
+ant //编译生成simpledb.jar
+java -jar dist/simpledb.jar convert data.txt 2 "int,int"//将.txt转换为.dat以便读入，3为列数，数据应符合要求，每行最后必须换行（包括最后一行），"int int"标识的数据的类型
+java -jar dist/simpledb.jar parser catalog.txt //调用sql语法解析程序，进入数据库模式，可输入语句进行查询、插入等操作。
+select d.f1 from data d;//sql语句例：查询data as d中的全部列

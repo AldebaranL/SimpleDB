@@ -2,10 +2,7 @@ package simpledb;
 
 import java.io.*;
 
-import java.util.ArrayList;
-import java.util.Dictionary;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -116,8 +113,8 @@ public class BufferPool {
             tempPage = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
             if(pages.size() == numPages){
                 //pages is full, need to be evict.
-                //this.evictPage();
-                throw new DbException("Not yet implemented implemented an eviction policy");
+                this.evictPage();
+                //throw new DbException("Not yet implemented implemented an eviction policy");
             }
             else{
                 //page is not full
@@ -264,6 +261,7 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+        locks.remove(pid.hashCode());
         pages.remove(pid.hashCode());
     }
 
@@ -295,19 +293,18 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-        Page to_test_page=null;
-        Integer to_remove_hashcode=null;
-        for(Integer it:pages.keySet()) {
-            to_test_page = pages.get(it);
-            if (to_test_page.isDirty() != null) {//HeapPage的isDirty()如果是dirty会返回TransactionId
-                to_test_page=null;
-                continue;
+        Iterator<Integer> it = pages.keySet().iterator();
+        if(!it.hasNext()) throw new DbException("can not find any page in cache");
+        Page tPage=pages.get(it.next());
+        if(tPage.isDirty() != null){
+            try {
+                flushPage(tPage.getId());
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-            to_remove_hashcode=it;
-            break;
         }
-        if(to_test_page==null) throw new DbException("there are all dirty page");
-        pages.remove(to_remove_hashcode);
+        pages.remove(tPage.getId().hashCode());
+        locks.remove(tPage.getId().hashCode());
     }
 
 }
