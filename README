@@ -19,4 +19,4 @@ java -classpath dist/simpledb.jar simpledb.test //运行测试程序
 ant //编译生成simpledb.jar
 java -jar dist/simpledb.jar convert data.txt 2 "int,int"//将.txt转换为.dat以便读入，3为列数，数据应符合要求，每行最后必须换行（包括最后一行），"int int"标识的数据的类型
 java -jar dist/simpledb.jar parser catalog.txt //调用sql语法解析程序，进入数据库模式，可输入语句进行查询、插入等操作。
-select d.f1 from data d;//sql语句例：查询data as d中的全部列
+select * from data d;//sql语句例：查询data as d中的全部列

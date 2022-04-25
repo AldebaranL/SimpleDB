@@ -195,7 +195,30 @@ public class BTreeFile implements DbFile {
 			Field f) 
 					throws DbException, TransactionAbortedException {
 		// some code goes here
-        return null;
+		if(pid.pgcateg()==BTreePageId.LEAF){
+			//若已搜索到叶子page，直接返回。
+			// 调用BTreeFile.getPage()而非BufferPool.getPage()，基本功能相同，额外增加了dirty的处理
+			return (BTreeLeafPage) getPage(tid,dirtypages,pid,perm);//perm为所给perm
+		}
+		else if(pid.pgcateg()==BTreePageId.INTERNAL){
+			//若搜索到中部结点page，递归搜索。
+			BTreeInternalPage prevPage=(BTreeInternalPage)getPage(tid,dirtypages,pid,Permissions.READ_ONLY);//注意Permissions为READ_ONLY
+			Iterator<BTreeEntry> it=prevPage.iterator();
+			BTreeEntry prevEntry=it.next();
+			if(f==null){
+				//若key值为null，递归返回最左边的孩子
+				return findLeafPage(tid,dirtypages,prevEntry.getLeftChild(),perm,f);
+			}
+			//找到首个大于或等于key的page
+			while(it.hasNext() && prevEntry.getKey().compare(Op.LESS_THAN,f))
+				prevEntry=it.next();
+			if(prevEntry.getKey().compare(Op.LESS_THAN,f)) //全部小于key，递归最右边的孩子
+				return findLeafPage(tid,dirtypages,prevEntry.getRightChild(),perm,f);
+			else //存在大于或等于key的entry，递归其左孩子
+				return findLeafPage(tid,dirtypages,prevEntry.getLeftChild(),perm,f);
+		}
+		//暂不支持其他类型的结点
+		else throw new DbException("this type of page is not supported in BTreeFile.findLeafPage()");
 	}
 	
 	/**
