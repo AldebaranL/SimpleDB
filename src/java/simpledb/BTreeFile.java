@@ -202,20 +202,20 @@ public class BTreeFile implements DbFile {
 		}
 		else if(pid.pgcateg()==BTreePageId.INTERNAL){
 			//若搜索到中部结点page，递归搜索。
-			BTreeInternalPage prevPage=(BTreeInternalPage)getPage(tid,dirtypages,pid,Permissions.READ_ONLY);//注意Permissions为READ_ONLY
-			Iterator<BTreeEntry> it=prevPage.iterator();
-			BTreeEntry prevEntry=it.next();
+			BTreeInternalPage nowPage=(BTreeInternalPage)getPage(tid,dirtypages,pid,Permissions.READ_ONLY);//注意Permissions为READ_ONLY
+			Iterator<BTreeEntry> it=nowPage.iterator();
+			BTreeEntry nowEntry=it.next();
 			if(f==null){
 				//若key值为null，递归返回最左边的孩子
-				return findLeafPage(tid,dirtypages,prevEntry.getLeftChild(),perm,f);
+				return findLeafPage(tid,dirtypages,nowEntry.getLeftChild(),perm,f);
 			}
 			//找到首个大于或等于key的page
-			while(it.hasNext() && prevEntry.getKey().compare(Op.LESS_THAN,f))
-				prevEntry=it.next();
-			if(prevEntry.getKey().compare(Op.LESS_THAN,f)) //全部小于key，递归最右边的孩子
-				return findLeafPage(tid,dirtypages,prevEntry.getRightChild(),perm,f);
+			while(it.hasNext() && nowEntry.getKey().compare(Op.LESS_THAN,f))
+				nowEntry=it.next();
+			if(nowEntry.getKey().compare(Op.LESS_THAN,f)) //全部小于key，递归最右边的孩子
+				return findLeafPage(tid,dirtypages,nowEntry.getRightChild(),perm,f);
 			else //存在大于或等于key的entry，递归其左孩子
-				return findLeafPage(tid,dirtypages,prevEntry.getLeftChild(),perm,f);
+				return findLeafPage(tid,dirtypages,nowEntry.getLeftChild(),perm,f);
 		}
 		//暂不支持其他类型的结点
 		else throw new DbException("this type of page is not supported in BTreeFile.findLeafPage()");
@@ -270,7 +270,42 @@ public class BTreeFile implements DbFile {
 		// the new entry.  getParentWithEmtpySlots() will be useful here.  Don't forget to update
 		// the sibling pointers of all the affected leaf pages.  Return the page into which a 
 		// tuple with the given key field should be inserted.
-        return null;
+
+		//1.将原page的tuple分一半给left_brother，建立好left_brother与原page。
+		BTreeLeafPage left_brother=(BTreeLeafPage) getEmptyPage(tid,dirtypages,BTreePageId.LEAF);//创建新的page（位于原page左边）
+		Iterator<Tuple> now_it=page.iterator();
+		if(now_it==null) throw new DbException ("this iterator is null in splitLeafPage() func");
+		//这里要先取出来，如果作为循环条件，则会因为删除的进行导致该变量变化
+		int round=page.getNumTuples()/2;
+		//从小到大删除，所以移除出来的新Page位于原来的Page的左边，和作业文档要求相同，left_brother保存了一半的tuple
+		for(int i=0;i<round;i++){
+			if(!now_it.hasNext()) throw new DbException("miss elements in splitLeafPage() func");
+			Tuple tuple_to_change=now_it.next();
+			page.deleteTuple(tuple_to_change);
+			left_brother.insertTuple(tuple_to_change);
+		}
+
+		//2.更新兄弟
+		if(page.getLeftSiblingId()!=null){
+			BTreeLeafPage previous_left_sibling=(BTreeLeafPage) getPage(tid,dirtypages,page.getLeftSiblingId(),Permissions.READ_WRITE);
+			previous_left_sibling.setRightSiblingId(left_brother.getId());
+		}
+		left_brother.setLeftSiblingId(page.getLeftSiblingId());
+		left_brother.setRightSiblingId(page.getId());
+		page.setLeftSiblingId(left_brother.getId());
+
+		//3.更新父节点，在父节点中建立新的page，其value为原page当前的第一个value
+		if(!now_it.hasNext()) throw new DbException("miss elements in splitLeafPage() func");
+		Field field_to_copy=now_it.next().getField(keyField);//now_it此时为原page中的第一个tuple，field_to_copy为page_father中的value
+		BTreeEntry entry_to_copy= new BTreeEntry(field_to_copy,left_brother.getId(),page.getId());
+		BTreeInternalPage page_father= getParentWithEmptySlots(tid,dirtypages,page.getParentId(),field_to_copy);
+		page_father.insertEntry(entry_to_copy);
+		updateParentPointers(tid,dirtypages,page_father);
+
+		//4.返回field所在的page
+		if(field_to_copy.compare(Op.GREATER_THAN_OR_EQ,field)) return left_brother;
+		else return page;
+        //return null;
 		
 	}
 	
@@ -308,7 +343,38 @@ public class BTreeFile implements DbFile {
 		// the parent pointers of all the children moving to the new page.  updateParentPointers()
 		// will be useful here.  Return the page into which an entry with the given key field
 		// should be inserted.
-		return null;
+
+		//1.将原page的tuple分一半给left_brother，建立好left_brother与原page。
+		BTreeInternalPage left_brother=(BTreeInternalPage) getEmptyPage(tid,dirtypages,BTreePageId.INTERNAL);
+		Iterator<BTreeEntry> now_it=page.iterator();
+		if(now_it==null) throw new DbException ("this iterator is null in splitInternalPage() func");
+		//这里要先取出来，如果作为循环条件，则会因为删除的进行导致该变量变化
+		int round=page.getNumEntries()/2;
+		//从小到大删除，所以移除出来的新Page位于原来的Page的左边，同上splitLeafPage()
+		for(int i=0;i<round;i++){
+			if(!now_it.hasNext()) throw new DbException("miss elements in splitInternalPage() func");
+			BTreeEntry entry_to_change=now_it.next();
+			page.deleteKeyAndLeftChild(entry_to_change);
+			left_brother.insertEntry(entry_to_change);
+		}
+
+		//2.更新父节点，将原page当前的第一个value push到父节点，并在page中删除
+		if(!now_it.hasNext()) throw new DbException("miss elements in splitInternalPage() func");
+		BTreeEntry entry_to_push= now_it.next();
+		Field field_to_push=entry_to_push.getKey();
+		page.deleteKeyAndLeftChild(entry_to_push);//在page中删除
+		entry_to_push= new BTreeEntry(field_to_push,left_brother.getId(),page.getId());
+		updateParentPointers(tid,dirtypages,page);
+		updateParentPointers(tid,dirtypages,left_brother);
+
+		BTreeInternalPage page_father=getParentWithEmptySlots(tid,dirtypages,page.getParentId(),field_to_push);
+		page_father.insertEntry(entry_to_push);
+		updateParentPointers(tid,dirtypages,page_father);
+
+		//3.返回field所在的page
+		if(field_to_push.compare(Op.GREATER_THAN_OR_EQ,field)) return left_brother;
+		else return page;
+		//return null;
 	}
 	
 	/**
