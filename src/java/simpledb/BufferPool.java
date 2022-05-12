@@ -4,6 +4,7 @@ import java.io.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -29,25 +30,262 @@ public class BufferPool {
     private int numPages;
    // private LinkedList<Page> pages;
     private ConcurrentHashMap<Integer, Page> pages;
-    private ConcurrentHashMap<Integer, lock> locks;
-    private class lock {
-        private TransactionId transactionId = null;
-        private Permissions permissions = null;
-        private int pageNo;
-        private lock(TransactionId tid, Permissions perm,int pageNo){
-            this.permissions = perm;
-            this.transactionId = tid;
-            this.pageNo=pageNo;
+    //private ConcurrentHashMap<Integer, lock> locks;
+
+    private LockProcess lockprocess;
+//    private class lock {
+//        private TransactionId transactionId = null;
+//        private Permissions permissions = null;
+//        private int pageNo;
+//        private lock(TransactionId tid, Permissions perm,int pageNo){
+//            this.permissions = perm;
+//            this.transactionId = tid;
+//            this.pageNo=pageNo;
+//        }
+//        private boolean isLocked(){
+//            //return pages.get(pageNo).isDirty()==null;
+//            return transactionId != null;
+//        }
+//        private void addlock(TransactionId tid,Permissions perm){
+//            this.permissions = perm;
+//            this.transactionId = tid;
+//        }
+//    }
+
+    /*
+     * Added by lyy
+     * Helper class of describe the type of lock and the lock's tid.
+     * when lockType == READ_WRITE means the lock is a exclusive lock
+     * when lockType == READ_ONLY means the lock is a shared lock
+     * */
+    public class Lock{
+        private Permissions lockType;
+        private TransactionId tid;
+
+        public Lock(Permissions lockType,TransactionId tid){
+            this.lockType=lockType;
+            this.tid=tid;
         }
-        private boolean isLocked(){
-            //return pages.get(pageNo).isDirty()==null;
-            return transactionId != null;
+        public Lock(Permissions lockType){
+            this.lockType=lockType;
+            this.tid=null;
         }
-        private void addlock(TransactionId tid,Permissions perm){
-            this.permissions = perm;
-            this.transactionId = tid;
+
+        @Override
+        public boolean equals(Object obj) {
+            if(this==obj) return true;
+            if(obj==null||getClass()!=obj.getClass()) return false;
+            Lock obj_lock=(Lock) obj;
+            return tid.equals(obj_lock.tid)&&lockType.equals(obj_lock.lockType);
         }
     }
+
+    /*
+     * Added by lyy
+     * Helper class to maintain and process series of locks on specific transaction
+     * */
+    public class LockProcess{
+        private ConcurrentHashMap<PageId,List<Lock>> pageid2locklist;
+        private ConcurrentHashMap<TransactionId, Set<TransactionId>> dependencylist;
+        public LockProcess(){
+            pageid2locklist=new ConcurrentHashMap<>();
+            dependencylist=new ConcurrentHashMap<>();
+        }
+        public synchronized void addLock(TransactionId tid,PageId pid,Permissions perm){
+            Lock lock_to_add=new Lock(perm,tid);
+            List<Lock> locklist=pageid2locklist.get(pid);
+            if(locklist==null){//如果这个页面上还没有Lock
+                locklist=new ArrayList<>();
+            }
+            locklist.add(lock_to_add);
+            pageid2locklist.put(pid,locklist);
+            removeDependency(tid);
+        }
+        private synchronized void addDependency(TransactionId from_tid,TransactionId to_tid){
+            if(from_tid==to_tid) return;
+            Set<TransactionId> lis=dependencylist.get(from_tid);
+            if(lis==null||lis.size()==0){
+                lis=new HashSet<>();
+            }
+            lis.add(to_tid);
+            dependencylist.put(from_tid,lis);
+        }
+        private synchronized void removeDependency(TransactionId tid){
+            dependencylist.remove(tid);
+        }
+        public synchronized boolean isexistCycle(TransactionId tid){
+            // using the logic of topologysort
+            Set<TransactionId> diverseid=new HashSet<>();
+            Queue<TransactionId> que=new ConcurrentLinkedQueue<>();
+            que.add(tid);
+
+            while(que.size()>0){
+                TransactionId remove_tid=que.remove();
+                if(diverseid.contains(remove_tid)) continue;
+                diverseid.add(remove_tid);
+                Set<TransactionId> now_set=dependencylist.get(remove_tid);
+                if(now_set==null) continue;
+                for(TransactionId now_tid:now_set){
+                    que.add(now_tid);
+                }
+            }
+
+            ConcurrentHashMap<TransactionId,Integer> now_rudu=new ConcurrentHashMap<>();
+            for(TransactionId now_tid:diverseid){
+                now_rudu.put(now_tid,0);
+            }
+            for(TransactionId now_tid:diverseid){
+                Set<TransactionId> now_set=dependencylist.get(now_tid);
+                if(now_set==null) continue;
+                for(TransactionId now2_tid:now_set){
+                    Integer temp = now_rudu.get(now2_tid);
+                    temp++;
+                    now_rudu.put(now2_tid,temp);
+                }
+            }
+
+            while(true){
+                int cnt=0;
+                for(TransactionId now_tid:diverseid){
+                    if(now_rudu.get(now_tid)==null) continue;
+                    if(now_rudu.get(now_tid)==0){
+                        Set<TransactionId> now_set=dependencylist.get(now_tid);
+                        if(now_set==null) continue;
+                        for(TransactionId now2_tid:now_set){
+                            Integer temp = now_rudu.get(now2_tid);
+                            if(temp==null) continue;
+                            temp--;
+                            now_rudu.put(now2_tid,temp);
+                        }
+                        now_rudu.remove(now_tid);
+                        cnt++;
+                    }
+                }
+                if(cnt==0) break;
+            }
+
+            if(now_rudu.size()==0) return false;
+            return true;
+        }
+        public synchronized boolean acquiresharelock(TransactionId tid,PageId pid)
+                throws DbException{
+            List<Lock> locklist=pageid2locklist.get(pid);
+            if(locklist!=null&&locklist.size()!=0){
+                if(locklist.size()==1){
+                    Lock only_lock=locklist.iterator().next();
+                    if(only_lock.tid.equals(tid)){
+                        if(only_lock.lockType==Permissions.READ_ONLY) return true;
+                        else {addLock(tid,pid,Permissions.READ_ONLY);return true;}
+                    }
+                    else{
+                        if(only_lock.lockType==Permissions.READ_ONLY) {addLock(tid,pid,Permissions.READ_ONLY); return true;}
+                        else {
+                            addDependency(tid,only_lock.tid);
+                            return false;
+                        }
+                    }
+                }
+                else{
+                    // Opt1.两个锁，都属于tid（一读一写）
+                    // Opt2.两个锁，都属于非tid（一读一写）
+                    // Opt3.多个读锁，有一个读锁为tid的
+                    // Opt4.多个读锁，但没有读锁为tid的
+                    for (Lock it:locklist) {
+                        if (it.lockType == Permissions.READ_WRITE) {
+                            //如果其中有一个写锁，根据是否为自己的来判断属于情况1还是2
+                            if(it.tid.equals(tid)) return true;
+                            else {
+                                addDependency(tid,it.tid);
+                                return false;
+                            }
+                        }
+                        else if (it.tid.equals(tid)) return true;
+                    }
+                    addLock(tid,pid,Permissions.READ_ONLY);
+                    return true;
+                }
+            }
+            addLock(tid,pid,Permissions.READ_ONLY);
+            return true;
+        }
+        public synchronized boolean acquireexclusivelock(TransactionId tid,PageId pid)
+                throws DbException{
+            List<Lock> locklist=pageid2locklist.get(pid);
+            if(locklist!=null&&locklist.size()!=0) {
+                if (locklist.size() == 1) {
+                    Lock only_lock = locklist.iterator().next();
+                    if (only_lock.tid.equals(tid)){
+                        if(only_lock.lockType==Permissions.READ_WRITE) return true;
+                        else {
+                            addLock(tid,pid, Permissions.READ_WRITE);
+                            return true;
+                        }
+                    }
+                    else {
+                        addDependency(tid,only_lock.tid);
+                        return false;
+                    }
+                }
+                else {
+                    if (locklist.size() == 2) {
+                        for (Lock it:locklist) {
+                            if (it.tid.equals(tid)&&it.lockType==Permissions.READ_WRITE) {
+                                return true;
+                            }
+                        }
+                        addDependency(tid,locklist.iterator().next().tid);
+                        return false;
+                    }
+                    for(Lock it:locklist){
+                        addDependency(tid,it.tid);
+                    }
+                    return false;
+                }
+            }
+            else{
+                addLock(tid,pid, Permissions.READ_WRITE);
+                return true;
+            }
+        }
+        public synchronized boolean acquirelock(TransactionId tid,PageId pid,Permissions perm)
+                throws DbException{
+            if(perm==Permissions.READ_ONLY) return acquiresharelock(tid,pid);
+            return acquireexclusivelock(tid,pid);
+        }
+        public synchronized boolean releasePage(TransactionId tid, PageId pid)
+        {
+            List<Lock> locks=pageid2locklist.get(pid);
+            if(locks==null||locks.size()==0) {
+                System.out.println("there are no locks");
+                return false;
+            }
+            Lock temp_lock=getLock(tid,pid);
+            if(temp_lock==null) return false;
+            locks.remove(temp_lock);
+
+            while(true){
+                temp_lock=getLock(tid,pid);
+                if(temp_lock==null) break;
+                locks.remove(temp_lock);
+            }
+
+            pageid2locklist.put(pid,locks);
+            return true;
+        }
+        public synchronized Lock getLock(TransactionId tid, PageId pid) {
+            List<Lock> list = pageid2locklist.get(pid);
+            if (list==null||list.size()==0) {
+                return null;
+            }
+            for (Lock lk:list) {
+                if (lk.tid.equals(tid)) return lk;
+            }
+            return null;
+        }
+
+    }
+
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -58,7 +296,7 @@ public class BufferPool {
         this.numPages = numPages;
         pages = new ConcurrentHashMap<>();
         //pageIdIndex = new ConcurrentHashMap<>();
-        locks = new ConcurrentHashMap<>();
+       // locks = new ConcurrentHashMap<>();
     }
     
     public static int getPageSize() {
@@ -94,36 +332,79 @@ public class BufferPool {
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
         // some code goes here
-        Page tempPage;
-        if(pages.containsKey(pid.hashCode())){
-            //the page is in BufferPool already
-            tempPage = pages.get(pid.hashCode());
-            if(locks.get(pid.hashCode()).isLocked()){
-                //locked,unable to access
-                //throw new TransactionAbortedException();
+        //锁机制
+        boolean is_acquired=lockprocess.acquirelock(tid,pid,perm);
+        /**
+         * 下面的是通过依赖图判环来检测死锁的部分，默认情况下这段代码应该是非注释状态。
+         * 在使用下面的代码片段的时候，需要把这段代码注释。
+         */
+        while(!is_acquired) {
+            try{
+                Thread.sleep(100);
             }
-            else{
-                //unlocked,add new lock
-                //throw new DbException("not implement");
-                //locks.get(pid).addlock(tid, perm);
+            catch(InterruptedException e){
+                e.printStackTrace();
             }
+            if (lockprocess.isexistCycle(tid)) {
+                throw new TransactionAbortedException();
+            }
+            is_acquired=lockprocess.acquirelock(tid,pid,perm);
         }
-        else{
-            //the page is not in BufferPool
-            tempPage = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
-            if(pages.size() == numPages){
-                //pages is full, need to be evict.
-                this.evictPage();
-                //throw new DbException("Not yet implemented implemented an eviction policy");
-            }
-            else{
-                //page is not full
-                pages.put(pid.hashCode(), tempPage);
-                locks.put(pid.hashCode(), new lock(tid,perm,pid.hashCode()));
-            }
 
+
+        /**
+          * 下面的是通过超时策略来检测死锁的部分，把上面的找环检测死锁的部分注释，下面的
+         * 取消注释就可以编译成功了。
+         */
+/*
+        Long begin=System.currentTimeMillis();
+        System.out.println(System.currentTimeMillis()+"begin"+currentThread().getName());
+        while(!is_acquired) {
+            Long end=System.currentTimeMillis();
+            System.out.println(System.currentTimeMillis()+"test"+currentThread().getName());
+            if(end-begin>3000){
+                throw new TransactionAbortedException();
+            }
+            try {
+                Thread.sleep(200);
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            is_acquired=lockprocess.acquirelock(tid,pid,perm);
         }
-        return tempPage;
+*/
+        /**
+         * 下面的代码是超时策略，但没有加入检测死锁机制，
+         * 因为AbortEvictionTest生成的数据包含死锁，但不能自动捕获抛出的异常，
+         * 而导致程序会异常终止，故检查AbortEvictionTest应使用这段代码。
+         * */
+/*
+        if(!is_acquired) {
+            try {
+                Thread.sleep(200);
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            is_acquired=lockprocess.acquirelock(tid,pid,perm);
+        }
+*/
+
+        //在锁机制后，读page
+        if(!pages.containsKey(pid.hashCode())){
+            //if the page is not in BufferPool
+            DbFile dbfile= Database.getCatalog().getDatabaseFile(pid.getTableId());
+            Page tempPage=dbfile.readPage(pid);
+            if(pages.size()>=numPages) {
+                //pages is full, need to be evict.
+                evictPage();
+            }
+            //page is not full
+            pages.put(pid.hashCode(), tempPage);
+        }
+        //the page is in BufferPool already
+        return pages.get(pid.hashCode());
     }
 
     /**
@@ -138,6 +419,7 @@ public class BufferPool {
     public void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
+        lockprocess.releasePage(tid,pid);
     }
 
     /**
@@ -148,13 +430,14 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return false;
+        return lockprocess.getLock(tid,p)!=null;
     }
 
     /**
@@ -199,7 +482,7 @@ public class BufferPool {
             else{
                 //this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
                 pages.put(now_page.getId().hashCode(),now_page);
-                locks.put(now_page.getId().hashCode(), new lock(tid,Permissions.READ_WRITE,now_page.getId().hashCode()));
+                //locks.put(now_page.getId().hashCode(), new lock(tid,Permissions.READ_WRITE,now_page.getId().hashCode()));
             }
         }
     }
@@ -232,7 +515,7 @@ public class BufferPool {
                 //this.getPage(tid,now_page.getId(),Permissions.READ_WRITE);
                 // 不能从磁盘中读取，因为磁盘中的page仍为更新前的，要直接在cache中添加此page并标记为dirty，以便未来在磁盘上再更新。
                 pages.put(now_page.getId().hashCode(),now_page);
-                locks.put(now_page.getId().hashCode(), new lock(tid,Permissions.READ_WRITE,now_page.getId().hashCode()));
+                //locks.put(now_page.getId().hashCode(), new lock(tid,Permissions.READ_WRITE,now_page.getId().hashCode()));
             }
         }
     }
@@ -261,7 +544,7 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
-        locks.remove(pid.hashCode());
+        //locks.remove(pid.hashCode());
         pages.remove(pid.hashCode());
     }
 
@@ -304,7 +587,7 @@ public class BufferPool {
             }
         }
         pages.remove(tPage.getId().hashCode());
-        locks.remove(tPage.getId().hashCode());
+        //locks.remove(tPage.getId().hashCode());
     }
 
 }
