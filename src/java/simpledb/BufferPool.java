@@ -32,7 +32,7 @@ public class BufferPool {
     private ConcurrentHashMap<Integer, Page> pages;
     //private ConcurrentHashMap<Integer, lock> locks;
 
-    private LockProcess lockprocess;
+    private LockManager lockmanager;
 //    private class lock {
 //        private TransactionId transactionId = null;
 //        private Permissions permissions = null;
@@ -54,9 +54,9 @@ public class BufferPool {
 
     /*
      * Added by lyy
-     * Helper class of describe the type of lock and the lock's tid.
-     * when lockType == READ_WRITE means the lock is a exclusive lock
-     * when lockType == READ_ONLY means the lock is a shared lock
+     * Help class describing the type and tid of lock.
+     * lockType == READ_WRITE means the lock is a exclusive lock
+     * lockType == READ_ONLY means the lock is a shared lock
      * */
     public class Lock{
         private Permissions lockType;
@@ -82,16 +82,19 @@ public class BufferPool {
 
     /*
      * Added by lyy
-     * Helper class to maintain and process series of locks on specific transaction
+     * Help class to maintain and process series of locks on a specific transaction
      * */
-    public class LockProcess{
+    public class LockManager{
         private ConcurrentHashMap<PageId,List<Lock>> pageid2locklist;
         private ConcurrentHashMap<TransactionId, Set<TransactionId>> dependencylist;
-        public LockProcess(){
+        public LockManager(){
             pageid2locklist=new ConcurrentHashMap<>();
             dependencylist=new ConcurrentHashMap<>();
         }
         public synchronized void addLock(TransactionId tid,PageId pid,Permissions perm){
+            /*
+             * 对pid页增加一个锁
+             */
             Lock lock_to_add=new Lock(perm,tid);
             List<Lock> locklist=pageid2locklist.get(pid);
             if(locklist==null){//如果这个页面上还没有Lock
@@ -99,9 +102,13 @@ public class BufferPool {
             }
             locklist.add(lock_to_add);
             pageid2locklist.put(pid,locklist);
+            //在依赖集合中删除tid
             removeDependency(tid);
         }
         private synchronized void addDependency(TransactionId from_tid,TransactionId to_tid){
+            /*
+             * 添加from_tid的所依赖的to_tid
+             */
             if(from_tid==to_tid) return;
             Set<TransactionId> lis=dependencylist.get(from_tid);
             if(lis==null||lis.size()==0){
@@ -111,6 +118,9 @@ public class BufferPool {
             dependencylist.put(from_tid,lis);
         }
         private synchronized void removeDependency(TransactionId tid){
+            /*
+             *返回在依赖集合中删除tid
+             */
             dependencylist.remove(tid);
         }
         public synchronized boolean isexistCycle(TransactionId tid){
@@ -167,112 +177,85 @@ public class BufferPool {
             if(now_rudu.size()==0) return false;
             return true;
         }
-        public synchronized boolean acquiresharelock(TransactionId tid,PageId pid)
+
+        public synchronized boolean acquireShareLock(TransactionId tid,PageId pid)
                 throws DbException{
+            /*
+             * 返回是否需要被shared（只读）锁锁住，true为不需要被锁住，可继续执行接下来的操作。
+             * 遍历该page涉及的全部锁，若其中有一个写锁且不是自己的则拒绝访问，反之可以访问，并做相应更新。
+             */
             List<Lock> locklist=pageid2locklist.get(pid);
-            if(locklist!=null&&locklist.size()!=0){
-                if(locklist.size()==1){
-                    Lock only_lock=locklist.iterator().next();
-                    if(only_lock.tid.equals(tid)){
-                        if(only_lock.lockType==Permissions.READ_ONLY) return true;
-                        else {addLock(tid,pid,Permissions.READ_ONLY);return true;}
-                    }
-                    else{
-                        if(only_lock.lockType==Permissions.READ_ONLY) {addLock(tid,pid,Permissions.READ_ONLY); return true;}
-                        else {
-                            addDependency(tid,only_lock.tid);
+            if(locklist!=null && locklist.size()!=0)
+                //若已经有锁
+                for (Lock it:locklist) {
+                    //遍历该page涉及的全部锁
+                    if (it.lockType == Permissions.READ_WRITE) {
+                        //其中有一个写锁
+                        if(it.tid.equals(tid)) return true;//是自己的，可以访问
+                        else {//不是自己的，添加依赖tid，拒绝访问
+                            addDependency(tid,it.tid);
                             return false;
                         }
                     }
+                    else if (it.tid.equals(tid)) return true;//若有自己的读锁，无需再加锁，直接返回可以访问
+                    //读锁对这个读访问无影响
                 }
-                else{
-                    // Opt1.两个锁，都属于tid（一读一写）
-                    // Opt2.两个锁，都属于非tid（一读一写）
-                    // Opt3.多个读锁，有一个读锁为tid的
-                    // Opt4.多个读锁，但没有读锁为tid的
-                    for (Lock it:locklist) {
-                        if (it.lockType == Permissions.READ_WRITE) {
-                            //如果其中有一个写锁，根据是否为自己的来判断属于情况1还是2
-                            if(it.tid.equals(tid)) return true;
-                            else {
-                                addDependency(tid,it.tid);
-                                return false;
-                            }
-                        }
-                        else if (it.tid.equals(tid)) return true;
-                    }
-                    addLock(tid,pid,Permissions.READ_ONLY);
-                    return true;
-                }
-            }
+            //若无锁或其他锁对当前操作无影响，增加这个锁，返回“可以访问”
             addLock(tid,pid,Permissions.READ_ONLY);
             return true;
         }
-        public synchronized boolean acquireexclusivelock(TransactionId tid,PageId pid)
+
+        public synchronized boolean acquireExclusiveLock(TransactionId tid,PageId pid)
                 throws DbException{
+            /*
+             * 返回是否需要被exclusive（读写）锁锁住，true为不需要被锁住，可继续执行接下来的操作。
+             * 若存在其他tid的读锁，拒绝访问；若存在自己的写锁或都为读锁，可以访问。
+             */
             List<Lock> locklist=pageid2locklist.get(pid);
             if(locklist!=null&&locklist.size()!=0) {
-                if (locklist.size() == 1) {
-                    Lock only_lock = locklist.iterator().next();
-                    if (only_lock.tid.equals(tid)){
-                        if(only_lock.lockType==Permissions.READ_WRITE) return true;
-                        else {
-                            addLock(tid,pid, Permissions.READ_WRITE);
-                            return true;
+                //若已经有锁
+                for (Lock it:locklist) {
+                    //遍历该page涉及的全部锁
+                    if (it.lockType == Permissions.READ_WRITE) {
+                        //其中有一个写锁
+                        if(it.tid.equals(tid)) return true;//是自己的，可以访问
+                        else {//不是自己的，添加依赖tid，拒绝访问
+                            addDependency(tid,it.tid);
+                            return false;
                         }
                     }
-                    else {
-                        addDependency(tid,only_lock.tid);
-                        return false;
-                    }
-                }
-                else {
-                    if (locklist.size() == 2) {
-                        for (Lock it:locklist) {
-                            if (it.tid.equals(tid)&&it.lockType==Permissions.READ_WRITE) {
-                                return true;
-                            }
-                        }
-                        addDependency(tid,locklist.iterator().next().tid);
-                        return false;
-                    }
-                    for(Lock it:locklist){
-                        addDependency(tid,it.tid);
-                    }
-                    return false;
+                    //读锁对这个写访问无影响
                 }
             }
-            else{
-                addLock(tid,pid, Permissions.READ_WRITE);
-                return true;
-            }
-        }
-        public synchronized boolean acquirelock(TransactionId tid,PageId pid,Permissions perm)
-                throws DbException{
-            if(perm==Permissions.READ_ONLY) return acquiresharelock(tid,pid);
-            return acquireexclusivelock(tid,pid);
-        }
-        public synchronized boolean releasePage(TransactionId tid, PageId pid)
-        {
-            List<Lock> locks=pageid2locklist.get(pid);
-            if(locks==null||locks.size()==0) {
-                System.out.println("there are no locks");
-                return false;
-            }
-            Lock temp_lock=getLock(tid,pid);
-            if(temp_lock==null) return false;
-            locks.remove(temp_lock);
-
-            while(true){
-                temp_lock=getLock(tid,pid);
-                if(temp_lock==null) break;
-                locks.remove(temp_lock);
-            }
-
-            pageid2locklist.put(pid,locks);
+            //若无锁或其他锁对当前操作无影响，增加这个锁，返回“可以访问”
+            addLock(tid,pid, Permissions.READ_WRITE);
             return true;
         }
+
+        public synchronized boolean acquireLock(TransactionId tid,PageId pid,Permissions perm)
+                throws DbException{
+            /*
+             * 返回是否需要被锁锁住，true为需要被锁住，根据perm类型调用acquiresharelock或acquireexclusivelock
+             */
+            if(perm==Permissions.READ_ONLY) return acquireShareLock(tid,pid);
+            return acquireExclusiveLock(tid,pid);
+        }
+
+        public synchronized void releasePage(TransactionId tid, PageId pid)
+        {
+            /*
+             * 将pid上的锁属于tid释放
+             */
+            List<Lock> locklist=pageid2locklist.get(pid);
+            if(locklist!=null&&locklist.size()!=0) {
+                locklist.removeIf(it -> it.tid.equals(tid));
+            }
+            pageid2locklist.put(pid,locklist);
+        }
         public synchronized Lock getLock(TransactionId tid, PageId pid) {
+            /*
+             * 返回pid页面上tid对应的锁，null为没有这个锁
+             **/
             List<Lock> list = pageid2locklist.get(pid);
             if (list==null||list.size()==0) {
                 return null;
@@ -333,12 +316,12 @@ public class BufferPool {
             throws TransactionAbortedException, DbException {
         // some code goes here
         //锁机制
-        boolean is_acquired=lockprocess.acquirelock(tid,pid,perm);
+        boolean is_acquired=lockmanager.acquireLock(tid,pid,perm);
         /**
          * 下面的是通过依赖图判环来检测死锁的部分，默认情况下这段代码应该是非注释状态。
          * 在使用下面的代码片段的时候，需要把这段代码注释。
          */
-        while(!is_acquired) {
+ /*       while(!is_acquired) {
             try{
                 Thread.sleep(100);
             }
@@ -351,7 +334,7 @@ public class BufferPool {
             is_acquired=lockprocess.acquirelock(tid,pid,perm);
         }
 
-
+*/
         /**
           * 下面的是通过超时策略来检测死锁的部分，把上面的找环检测死锁的部分注释，下面的
          * 取消注释就可以编译成功了。
@@ -379,17 +362,17 @@ public class BufferPool {
          * 因为AbortEvictionTest生成的数据包含死锁，但不能自动捕获抛出的异常，
          * 而导致程序会异常终止，故检查AbortEvictionTest应使用这段代码。
          * */
-/*
-        if(!is_acquired) {
+//*
+        while(!is_acquired) {
             try {
                 Thread.sleep(200);
             }
             catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            is_acquired=lockprocess.acquirelock(tid,pid,perm);
+            is_acquired=lockmanager.acquireLock(tid,pid,perm);
         }
-*/
+//*/
 
         //在锁机制后，读page
         if(!pages.containsKey(pid.hashCode())){
@@ -419,7 +402,7 @@ public class BufferPool {
     public void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
-        lockprocess.releasePage(tid,pid);
+        lockmanager.releasePage(tid,pid);
     }
 
     /**
@@ -437,7 +420,7 @@ public class BufferPool {
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return lockprocess.getLock(tid,p)!=null;
+        return lockmanager.getLock(tid,p)!=null;
     }
 
     /**
