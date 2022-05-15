@@ -343,19 +343,22 @@ public class BufferPool {
      */
     private synchronized void evictPage() throws DbException {
         // some code goes here
+        //只有非dirty的page会被evict，若所有page都为dirty，则会抛出DbException
         // not necessary for lab1
-        Iterator<Integer> it = pages.keySet().iterator();
-        if(!it.hasNext()) throw new DbException("can not find any page in cache");
-        Page tPage=pages.get(it.next());
-        if(tPage.isDirty() != null){
-            try {
-                flushPage(tPage.getId());
-            } catch (IOException e) {
-                e.printStackTrace();
+        //if(!it.hasNext()) throw new DbException("can not find any page in cache");
+        for (Integer integer : pages.keySet()) {
+            Page tPage = pages.get(integer);
+            if (tPage.isDirty() == null) {//该page为非dirty
+                pages.remove(tPage.getId().hashCode());
+                return;
             }
         }
-        pages.remove(tPage.getId().hashCode());
-        //locks.remove(tPage.getId().hashCode());
+//                try {
+//                    flushPage(tPage.getId());
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+        throw new DbException("there are all dirty page");
     }
 
 }
