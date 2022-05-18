@@ -106,20 +106,21 @@ public class BufferPool {
          * 下面的是通过依赖图判环来检测死锁的部分，默认情况下这段代码应该是非注释状态。
          * 在使用下面的代码片段的时候，需要把这段代码注释。
          */
- /*       while(!is_acquired) {
+ ///*
+       while(!is_acquired) {
             try{
                 Thread.sleep(100);
             }
             catch(InterruptedException e){
                 e.printStackTrace();
             }
-            if (lockprocess.isexistCycle(tid)) {
+            if (lockmanager.isexistCycle(tid)) {
                 throw new TransactionAbortedException();
             }
-            is_acquired=lockprocess.acquirelock(tid,pid,perm);
+            is_acquired=lockmanager.acquireLock(tid,pid,perm);
         }
 
-*/
+//*/
         /**
           * 下面的是通过超时策略来检测死锁的部分，把上面的找环检测死锁的部分注释，下面的
          * 取消注释就可以编译成功了。
@@ -147,7 +148,7 @@ public class BufferPool {
          * 因为AbortEvictionTest生成的数据包含死锁，但不能自动捕获抛出的异常，
          * 而导致程序会异常终止，故检查AbortEvictionTest应使用这段代码。
          * */
-//*
+/*
         while(!is_acquired) {
             try {
                 Thread.sleep(200);
@@ -157,7 +158,7 @@ public class BufferPool {
             }
             is_acquired=lockmanager.acquireLock(tid,pid,perm);
         }
-//*/
+*/
 
         //在锁机制后，读page
         if(!pages.containsKey(pid.hashCode())){
@@ -198,7 +199,7 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
-
+        transactionComplete(tid,true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
@@ -219,8 +220,25 @@ public class BufferPool {
         throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        for(Integer it:pages.keySet()){
+            //遍历当前bufferpool中的全部page，找到所有被当前tid修改过的page
+            Page pg = pages.get(it);
+            if (pg.isDirty()==tid) {
+                if (commit) {//完成事务并提交，将page写到磁盘上
+                    flushPage(pg.getId());
+                    pg.setBeforeImage();
+                } else{//中止事务，将bufferpool中的该page删除，磁盘上的page无需改变
+                    discardPage(pg.getId());
+                }
+            }
+        }
+        //将与当前事务有关的全部lock释放
+        for(Integer it:pages.keySet()){
+            if(holdsLock(tid,pages.get(it).getId())){
+                releasePage(tid,pages.get(it).getId());
+            }
+        }
     }
-
     /**
      * Add a tuple to the specified table on behalf of transaction tid.  Will
      * acquire a write lock on the page the tuple is added to and any other 
