@@ -78,10 +78,10 @@ public class LockManager{
     }
     public synchronized boolean isexistCycle(TransactionId tid){
         // using the logic of topologysort
-        Set<TransactionId> diverseid=new HashSet<>();
-        Queue<TransactionId> que=new ConcurrentLinkedQueue<>();
+        //1.构建所有可达的tid的集合diverseid
+        Set<TransactionId> diverseid=new HashSet<>();//所有可达的tid的集合
+        Queue<TransactionId> que=new ConcurrentLinkedQueue<>();//由当前tid遍历到的尚未更新其他的结点队列
         que.add(tid);
-
         while(que.size()>0){
             TransactionId remove_tid=que.remove();
             if(diverseid.contains(remove_tid)) continue;
@@ -92,7 +92,7 @@ public class LockManager{
                 que.add(now_tid);
             }
         }
-
+        //2.统计所有可达的tid的入度now_rudu
         ConcurrentHashMap<TransactionId,Integer> now_rudu=new ConcurrentHashMap<>();
         for(TransactionId now_tid:diverseid){
             now_rudu.put(now_tid,0);
@@ -106,7 +106,7 @@ public class LockManager{
                 now_rudu.put(now2_tid,temp);
             }
         }
-
+        //3.循环找到入度为0的tid并删除该tid和其发出的边直至无法找到。
         while(true){
             int cnt=0;
             for(TransactionId now_tid:diverseid){
@@ -126,7 +126,7 @@ public class LockManager{
             }
             if(cnt==0) break;
         }
-
+        //4.若还有剩余tid，则有环，反之无环
         if(now_rudu.size()==0) return false;
         return true;
     }

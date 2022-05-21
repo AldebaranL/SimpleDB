@@ -131,7 +131,7 @@ public class BufferPool {
         while(!lockmanager.acquireLock(tid,pid,perm)) {
             Long end=System.currentTimeMillis();
             //System.out.println(System.currentTimeMillis()+"test"+currentThread().getName());
-            if(end-begin>2000){
+            if(end-begin>200){
                 throw new TransactionAbortedException();
             }
             try {
