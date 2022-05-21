@@ -6,6 +6,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import static java.lang.Thread.currentThread;
+
 /**
  * BufferPool manages the reading and writing of pages into memory from
  * disk. Access methods call into it to retrieve pages, and it fetches
@@ -101,15 +103,14 @@ public class BufferPool {
             throws TransactionAbortedException, DbException {
         // some code goes here
         //锁机制
-        boolean is_acquired=lockmanager.acquireLock(tid,pid,perm);
         /**
          * 下面的是通过依赖图判环来检测死锁的部分，默认情况下这段代码应该是非注释状态。
          * 在使用下面的代码片段的时候，需要把这段代码注释。
          */
- ///*
-       while(!is_acquired) {
+      /*
+       while(!lockmanager.acquireLock(tid,pid,perm)) {
             try{
-                Thread.sleep(100);
+                Thread.sleep(10);
             }
             catch(InterruptedException e){
                 e.printStackTrace();
@@ -117,7 +118,6 @@ public class BufferPool {
             if (lockmanager.isexistCycle(tid)) {
                 throw new TransactionAbortedException();
             }
-            is_acquired=lockmanager.acquireLock(tid,pid,perm);
         }
 
 //*/
@@ -125,40 +125,38 @@ public class BufferPool {
           * 下面的是通过超时策略来检测死锁的部分，把上面的找环检测死锁的部分注释，下面的
          * 取消注释就可以编译成功了。
          */
-/*
+///*
         Long begin=System.currentTimeMillis();
-        System.out.println(System.currentTimeMillis()+"begin"+currentThread().getName());
-        while(!is_acquired) {
+        //System.out.println(System.currentTimeMillis()+"begin"+currentThread().getName());
+        while(!lockmanager.acquireLock(tid,pid,perm)) {
             Long end=System.currentTimeMillis();
-            System.out.println(System.currentTimeMillis()+"test"+currentThread().getName());
-            if(end-begin>3000){
+            //System.out.println(System.currentTimeMillis()+"test"+currentThread().getName());
+            if(end-begin>2000){
                 throw new TransactionAbortedException();
             }
             try {
-                Thread.sleep(200);
+                Thread.sleep(10);
             }
             catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            is_acquired=lockprocess.acquirelock(tid,pid,perm);
         }
-*/
+//*/
         /**
          * 下面的代码是超时策略，但没有加入检测死锁机制，
          * 因为AbortEvictionTest生成的数据包含死锁，但不能自动捕获抛出的异常，
          * 而导致程序会异常终止，故检查AbortEvictionTest应使用这段代码。
          * */
 /*
-        while(!is_acquired) {
+        if(!lockmanager.acquireLock(tid,pid,perm)) {
             try {
-                Thread.sleep(200);
+                Thread.sleep(10);
             }
             catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            is_acquired=lockmanager.acquireLock(tid,pid,perm);
         }
-*/
+//*/
 
         //在锁机制后，读page
         if(!pages.containsKey(pid.hashCode())){
