@@ -131,21 +131,21 @@ public class BufferPool {
         while(!lockmanager.acquireLock(tid,pid,perm)) {
             Long end=System.currentTimeMillis();
             //System.out.println(System.currentTimeMillis()+"test"+currentThread().getName());
-            if(end-begin>200){
+            if(end-begin>300){
                 throw new TransactionAbortedException();
             }
-            try {
+            /*try {
                 Thread.sleep(10);
             }
             catch (InterruptedException e) {
                 e.printStackTrace();
-            }
+            }*/
         }
 //*/
         /**
          * 下面的代码是超时策略，但没有加入检测死锁机制，
          * 因为AbortEvictionTest生成的数据包含死锁，但不能自动捕获抛出的异常，
-         * 而导致程序会异常终止，故检查AbortEvictionTest应使用这段代码。
+         * 而导致程序会异常终止，故检查AbortEvictionTest和BTreeDeadlockTest应使用这段代码。
          * */
 /*
         if(!lockmanager.acquireLock(tid,pid,perm)) {
@@ -214,22 +214,42 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      * @param commit a flag indicating whether we should commit or abort
      */
+    /**
+     * Helper class used in transactionComplete function
+     * added by Sakura
+     * Revert changes made in specific transaction
+     * */
+    public synchronized void revertchanges(TransactionId tid){
+
+        for(Integer it:pages.keySet()){
+            Page now_page=pages.get(it);
+            if(now_page.isDirty()==tid){
+                int now_tableid=now_page.getId().getTableId();
+                DbFile f=Database.getCatalog().getDatabaseFile(now_tableid);
+                Page revert_page=f.readPage(now_page.getId());
+                pages.put(it,revert_page);
+                //page_hashmap.get(it).setBeforeImage();
+            }
+        }
+    }
     public void transactionComplete(TransactionId tid, boolean commit)
         throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
-        for(Integer it:pages.keySet()){
-            //遍历当前bufferpool中的全部page，找到所有被当前tid修改过的page
-            Page pg = pages.get(it);
-            if (pg.isDirty()==tid) {
-                if (commit) {//完成事务并提交，将page写到磁盘上
-                    flushPage(pg.getId());
-                    pg.setBeforeImage();
-                } else{//中止事务，将bufferpool中的该page删除，磁盘上的page无需改变
-                    discardPage(pg.getId());
-                }
-            }
-        }
+        if(commit) flushPages(tid);//写到磁盘上
+        else revertchanges(tid);//事务恢复
+//        for(Integer it:pages.keySet()){
+//            //遍历当前bufferpool中的全部page，找到所有被当前tid修改过的page
+//            Page pg = pages.get(it);
+//            if (pg.isDirty()==tid) {
+//                if (commit) {//完成事务并提交，将page写到磁盘上
+//                    flushPage(pg.getId());
+//                    pg.setBeforeImage();
+//                } else{//中止事务，将bufferpool中的该page删除，磁盘上的page无需改变
+//                    discardPage(pg.getId());
+//                }
+//            }
+//        }
         //将与当前事务有关的全部lock释放
         for(Integer it:pages.keySet()){
             if(holdsLock(tid,pages.get(it).getId())){
@@ -284,7 +304,7 @@ public class BufferPool {
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
@@ -348,9 +368,15 @@ public class BufferPool {
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        for(Integer it:pages.keySet()){
+            Page now_page=pages.get(it);
+            if(now_page.isDirty()==tid){
+                flushPage(now_page.getId());
+            }
+        }
     }
 
     /**
